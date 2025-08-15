@@ -40,14 +40,14 @@ class ProductDemandForecasting:
         
         try:
             self.data = pd.read_csv(filepath)
-            print(f"✓ Dataset loaded successfully!")
+            print(f"Dataset loaded successfully!")
             print(f"Dataset shape: {self.data.shape}")
             print(f"\nColumn names: {list(self.data.columns)}")
             print(f"\nFirst 5 rows:")
             print(self.data.head())
             return True
         except FileNotFoundError:
-            print("❌ Dataset file not found. Please ensure you've downloaded it from:")
+            print("Dataset file not found. Please ensure you've downloaded it from:")
             print("https://www.kaggle.com/felixzhao/productdemandforecasting")
             return False
     
@@ -67,15 +67,23 @@ class ProductDemandForecasting:
         print(missing_values)
         
         if missing_values.sum() > 0:
-            print(f"✓ Dropping {missing_values.sum()} rows with missing values...")
+            print(f"Dropping {missing_values.sum()} rows with missing values...")
             self.data = self.data.dropna()
             print(f"New dataset shape: {self.data.shape}")
         else:
-            print("✓ No missing values found!")
+            print("No missing values found!")
         
         # Display basic statistics
         print(f"\nDataset statistics:")
-        print(self.data.describe())
+        print(self.data.describe(include='all'))
+        
+        # --- NEW CODE TO FIX THE VALUEERROR ---
+        print("\nCleaning 'Order_Demand' column...")
+        self.data['Order_Demand'] = self.data['Order_Demand'].astype(str).str.replace('(', '').str.replace(')', '')
+        self.data['Order_Demand'] = pd.to_numeric(self.data['Order_Demand'], errors='coerce')
+        self.data = self.data.dropna(subset=['Order_Demand'])
+        print(f"Cleaned dataset shape: {self.data.shape}")
+        # --- END OF NEW CODE ---
         
     def feature_selection(self):
         """Select and prepare features for modeling"""
@@ -87,7 +95,6 @@ class ProductDemandForecasting:
         print("Available columns:", list(self.data.columns))
         
         # Assume the target variable is related to demand/order quantity
-        # You may need to adjust this based on your actual dataset structure
         target_candidates = ['Order_Demand', 'demand', 'quantity', 'sales', 'target']
         target_column = None
         
@@ -97,11 +104,10 @@ class ProductDemandForecasting:
                 break
         
         if target_column is None:
-            # If no standard target found, use the last column as target
             target_column = self.data.columns[-1]
-            print(f"⚠️  Using '{target_column}' as target variable")
+            print(f"WARNING: Using '{target_column}' as target variable")
         else:
-            print(f"✓ Found target variable: '{target_column}'")
+            print(f"Found target variable: '{target_column}'")
         
         # Separate features and target
         X = self.data.drop(columns=[target_column])
@@ -124,8 +130,8 @@ class ProductDemandForecasting:
                 X[f'{col}_day'] = pd.to_datetime(X[col]).dt.day
                 X = X.drop(columns=[col])
         
-        print(f"✓ Final feature matrix shape: {X.shape}")
-        print(f"✓ Target variable shape: {y.shape}")
+        print(f"Final feature matrix shape: {X.shape}")
+        print(f"Target variable shape: {y.shape}")
         print(f"Selected features: {list(X.columns)}")
         
         return X, y
@@ -163,7 +169,7 @@ class ProductDemandForecasting:
         X_val_scaled = self.scaler.transform(X_val)
         X_test_scaled = self.scaler.transform(X_test)
         
-        print("✓ Features scaled using StandardScaler")
+        print("Features scaled using StandardScaler")
         
         return X_train_scaled, X_val_scaled, X_test_scaled
     
@@ -201,7 +207,7 @@ class ProductDemandForecasting:
                     'predictions': y_val_pred
                 }
                 
-                print(f"  {criterion:15s}: R² = {r2:.4f}")
+                print(f"  {criterion:15s}: R^2 = {r2:.4f}")
                 
                 if r2 > best_score:
                     best_score = r2
@@ -210,11 +216,13 @@ class ProductDemandForecasting:
             except Exception as e:
                 print(f"  {criterion:15s}: Error - {str(e)}")
         
-        print(f"\n✓ Best criterion: {best_criterion} (R² = {best_score:.4f})")
-        self.models['decision_tree'] = dt_results[best_criterion]['model']
+        print(f"\nBest criterion: {best_criterion} (R^2 = {best_score:.4f})")
+        
+        if best_criterion is not None:
+            self.models['decision_tree'] = dt_results[best_criterion]['model']
         self.results['decision_tree'] = dt_results
         
-        return dt_results[best_criterion]['model'], best_criterion
+        return self.models.get('decision_tree'), best_criterion
     
     def train_svr(self, X_train, X_val, y_train, y_val):
         """Train Support Vector Regression"""
@@ -246,7 +254,7 @@ class ProductDemandForecasting:
                     'predictions': y_val_pred
                 }
                 
-                print(f"  {kernel:10s}: R² = {r2:.4f}")
+                print(f"  {kernel:10s}: R^2 = {r2:.4f}")
                 
                 if r2 > best_score:
                     best_score = r2
@@ -255,11 +263,13 @@ class ProductDemandForecasting:
             except Exception as e:
                 print(f"  {kernel:10s}: Error - {str(e)}")
         
-        print(f"\n✓ Best kernel: {best_kernel} (R² = {best_score:.4f})")
-        self.models['svr'] = svr_results[best_kernel]['model']
-        self.results['svr'] = svr_results[best_kernel]
+        print(f"\nBest kernel: {best_kernel} (R^2 = {best_score:.4f})")
         
-        return svr_results[best_kernel]['model'], best_kernel
+        if best_kernel is not None:
+            self.models['svr'] = svr_results[best_kernel]['model']
+        self.results['svr'] = svr_results
+        
+        return self.models.get('svr'), best_kernel
     
     def train_additional_models(self, X_train, X_val, y_train, y_val):
         """Train additional regression models for comparison"""
@@ -289,10 +299,10 @@ class ProductDemandForecasting:
                     'predictions': y_val_pred
                 }
                 
-                print(f"✓ {name:20s}: R² = {r2:.4f}")
+                print(f" {name:20s}: R^2 = {r2:.4f}")
                 
             except Exception as e:
-                print(f"❌ {name:20s}: Error - {str(e)}")
+                print(f" Error - {name:20s}: {str(e)}")
     
     def evaluate_final_models(self, X_test, y_test):
         """Evaluate all models on test set"""
@@ -310,19 +320,19 @@ class ProductDemandForecasting:
                 mae = mean_absolute_error(y_test, y_test_pred)
                 
                 final_results[model_name] = {
-                    'R² Score': r2,
+                    'R^2 Score': r2,
                     'MSE': mse,
                     'MAE': mae,
                     'RMSE': np.sqrt(mse)
                 }
                 
                 print(f"\n{model_name.upper().replace('_', ' ')}:")
-                print(f"  R² Score: {r2:.4f}")
+                print(f"  R^2 Score: {r2:.4f}")
                 print(f"  RMSE:     {np.sqrt(mse):.4f}")
                 print(f"  MAE:      {mae:.4f}")
                 
             except Exception as e:
-                print(f"❌ Error evaluating {model_name}: {str(e)}")
+                print(f"Error evaluating {model_name}: {str(e)}")
         
         return final_results
     
@@ -332,26 +342,26 @@ class ProductDemandForecasting:
         print("CREATING VISUALIZATIONS")
         print("=" * 60)
         
-        # Extract R² scores for plotting
+        # Extract R^2 scores for plotting
         model_names = list(final_results.keys())
-        r2_scores = [final_results[name]['R² Score'] for name in model_names]
+        r2_scores = [final_results[name]['R^2 Score'] for name in model_names]
         
-        # Create bar plot of R² scores
+        # Create bar plot of R^2 scores
         plt.figure(figsize=(12, 6))
         
         plt.subplot(1, 2, 1)
         colors = ['skyblue', 'lightcoral', 'lightgreen', 'gold']
         bars = plt.bar(range(len(model_names)), r2_scores, color=colors[:len(model_names)])
         plt.xlabel('Models')
-        plt.ylabel('R² Score')
-        plt.title('Model Performance Comparison (R² Score)')
+        plt.ylabel('R^2 Score')
+        plt.title('Model Performance Comparison (R^2 Score)')
         plt.xticks(range(len(model_names)), [name.replace('_', '\n') for name in model_names], rotation=0)
         plt.ylim(0, max(r2_scores) * 1.1)
         
         # Add value labels on bars
         for i, (bar, score) in enumerate(zip(bars, r2_scores)):
             plt.text(bar.get_x() + bar.get_width()/2., bar.get_height() + 0.01,
-                    f'{score:.3f}', ha='center', va='bottom')
+                     f'{score:.3f}', ha='center', va='bottom')
         
         # Create RMSE comparison
         plt.subplot(1, 2, 2)
@@ -365,17 +375,17 @@ class ProductDemandForecasting:
         # Add value labels on bars
         for i, (bar, score) in enumerate(zip(bars2, rmse_scores)):
             plt.text(bar.get_x() + bar.get_width()/2., bar.get_height() + max(rmse_scores)*0.01,
-                    f'{score:.2f}', ha='center', va='bottom')
+                     f'{score:.2f}', ha='center', va='bottom')
         
         plt.tight_layout()
         plt.savefig('model_comparison.png', dpi=300, bbox_inches='tight')
         plt.show()
         
-        print("✓ Visualizations created and saved as 'model_comparison.png'")
+        print("Visualizations created and saved as 'model_comparison.png'")
 
 def main():
     """Main execution function"""
-    print("🚀 PRODUCT DEMAND FORECASTING MINI PROJECT")
+    print("PRODUCT DEMAND FORECASTING MINI PROJECT")
     print("=" * 60)
     
     # Initialize the forecasting pipeline
@@ -386,7 +396,7 @@ def main():
     dataset_path = "Historical Product Demand.csv"  # Adjust this path as needed
     
     if not forecaster.load_data(dataset_path):
-        print("\n📋 TO GET STARTED:")
+        print("\nTO GET STARTED:")
         print("1. Download the dataset from: https://www.kaggle.com/felixzhao/productdemandforecasting")
         print("2. Place the CSV file in the same directory as this script")
         print("3. Update the 'dataset_path' variable if needed")
@@ -436,32 +446,32 @@ def main():
     
     # Print final summary
     print("\n" + "=" * 60)
-    print("📊 FINAL RESULTS SUMMARY")
+    print("FINAL RESULTS SUMMARY")
     print("=" * 60)
     
-    print(f"✅ Decision Tree (Best Criterion: {best_dt_criterion})")
+    print(f"Decision Tree (Best Criterion: {best_dt_criterion})")
     if 'decision_tree' in final_results:
-        print(f"   R² Score: {final_results['decision_tree']['R² Score']:.4f}")
+        print(f"   R^2 Score: {final_results['decision_tree']['R^2 Score']:.4f}")
     
-    print(f"✅ SVR (Best Kernel: {best_svr_kernel})")
+    print(f"SVR (Best Kernel: {best_svr_kernel})")
     if 'svr' in final_results:
-        print(f"   R² Score: {final_results['svr']['R² Score']:.4f}")
+        print(f"   R^2 Score: {final_results['svr']['R^2 Score']:.4f}")
     
     # Find best performing model
     if final_results:
-        best_model = max(final_results.keys(), key=lambda x: final_results[x]['R² Score'])
-        print(f"\n🏆 Best Performing Model: {best_model.upper().replace('_', ' ')}")
-        print(f"   R² Score: {final_results[best_model]['R² Score']:.4f}")
+        best_model = max(final_results.keys(), key=lambda x: final_results[x]['R^2 Score'])
+        print(f"\nBest Performing Model: {best_model.upper().replace('_', ' ')}")
+        print(f"   R^2 Score: {final_results[best_model]['R^2 Score']:.4f}")
     
     print("\n" + "=" * 60)
-    print("🎉 PROJECT COMPLETED SUCCESSFULLY!")
+    print("PROJECT COMPLETED SUCCESSFULLY!")
     print("=" * 60)
-    print("\n📋 DELIVERABLES CREATED:")
-    print("✓ Multiple R²-squared measures for different Decision Tree criteria")
-    print("✓ R²-squared measure for SVR output")
-    print("✓ Additional regression models for comparison")
-    print("✓ Model performance visualizations")
-    print("✓ Complete analysis pipeline")
+    print("\nDELIVERABLES CREATED:")
+    print("Multiple R^2-squared measures for different Decision Tree criteria")
+    print("R^2-squared measure for SVR output")
+    print("Additional regression models for comparison")
+    print("Model performance visualizations")
+    print("Complete analysis pipeline")
 
 if __name__ == "__main__":
     main()
